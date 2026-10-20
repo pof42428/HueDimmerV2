@@ -1,6 +1,6 @@
 # 💡 Advanced & Fully Optional Adaptive Hue Dimmer v2 (Zigbee2MQTT) Blueprint for Home Assistant
 
-An advanced, flexible Home Assistant automation blueprint for the **Philips Hue Dimmer Switch v2 (`929002398602` / `RWL022`)** via **Zigbee2MQTT**.
+An advanced, flexible Home Assistant automation blueprint for the **[Philips Hue Dimmer Switch v2 (`929002398602` / `RWL022`)](https://www.zigbee2mqtt.io/devices/929002398602.html)** via **Zigbee2MQTT**.
 
 This blueprint controls any number of lights ($n$ entities, light groups, or entire areas) with support for **dual-mode Up/Down controls** (Brightness vs. Kelvin Color Temperature), **sun-based adaptive lighting**, **visual RGB feedback**, and **custom safe min/max bounds**.
 
