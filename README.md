@@ -66,11 +66,11 @@ Below is a detailed breakdown of all entities configured in the blueprint and ho
 
 * **`sun_kelvin_sensor` (Optional):**
   * **Domain:** `sensor`
-  * **Role:** Provides the current target color temperature in Kelvin based on sun elevation or time of day (e.g., `sensor.kelvin_de_la_soare`).
+  * **Role:** Provides the current target color temperature in Kelvin based on sun elevation or time of day (e.g., `sensor.sun_kelvin`).
   * **Fallback:** If blank or unavailable, defaults to a static **`2700K`**.
 * **`sun_brightness_sensor` (Optional):**
   * **Domain:** `sensor`
-  * **Role:** Provides the target brightness percentage (0–100%) based on solar position or outdoor light levels (e.g., `sensor.luminozitate_de_la_soare`).
+  * **Role:** Provides the target brightness percentage (0–100%) based on solar position or outdoor light levels (e.g., `sensor.sun_brightness`).
   * **Fallback:** If blank or unavailable, defaults to a static **`50%`**.
 
 ---
