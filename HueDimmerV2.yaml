@@ -1,0 +1,410 @@
+blueprint:
+  name: "HueDimmerV2"
+  description: >
+    Flexible light controller for Philips Hue Dimmer Switch v2.
+    All helpers, sensors, and min/max limits are optional sensors or input_numbers that fall back to defaults if left blank.
+  domain: automation
+
+  # =========================================================================
+  # BLUEPRINT INPUTS (UI Configuration Options)
+  # =========================================================================
+  input:
+    remote_device_id:
+      name: Hue Dimmer Switch (Zigbee2MQTT Device)
+      description: Select the Philips Hue Dimmer Switch v2 device.
+      selector:
+        device:
+          integration: mqtt
+
+    target_light:
+      name: Target Light
+      description: Select the target light, light group, or area to control.
+      selector:
+        target:
+          entity:
+            domain: light
+
+    adaptive_mode_boolean:
+      name: Adaptive Mode Helper (Optional)
+      description: Optional input_boolean to track whether live adaptive tracking is active. Leave blank to skip.
+      default: ""
+      selector:
+        entity:
+          domain: input_boolean
+
+    control_mode_boolean:
+      name: Mode Toggle Helper - Brightness vs Kelvin (Optional)
+      description: Optional input_boolean to toggle between Brightness (ON) and Kelvin (OFF) control. Leave blank to default to brightness.
+      default: ""
+      selector:
+        entity:
+          domain: input_boolean
+
+    sun_kelvin_sensor:
+      name: Sun Kelvin Sensor (Optional)
+      description: Sensor providing target Kelvin based on sun position. Leave blank to skip adaptive color.
+      default: ""
+      selector:
+        entity:
+          domain: sensor
+
+    sun_brightness_sensor:
+      name: Sun Brightness Sensor (Optional)
+      description: Sensor providing target brightness (0-100%). Leave blank to skip adaptive brightness.
+      default: ""
+      selector:
+        entity:
+          domain: sensor
+
+    min_brightness_entity:
+      name: Minimum Brightness Sensor / Input Number (Optional)
+      description: Optional sensor or input_number for minimum brightness (%). Defaults to 20 if blank.
+      default: ""
+      selector:
+        entity:
+          domain:
+            - sensor
+            - input_number
+
+    max_brightness_entity:
+      name: Maximum Brightness Sensor / Input Number (Optional)
+      description: Optional sensor or input_number for maximum brightness (%). Defaults to 100 if blank.
+      default: ""
+      selector:
+        entity:
+          domain:
+            - sensor
+            - input_number
+
+    min_kelvin_entity:
+      name: Minimum Color Temperature Sensor / Input Number (Optional)
+      description: Optional sensor or input_number for minimum Kelvin. Defaults to 2700 if blank.
+      default: ""
+      selector:
+        entity:
+          domain:
+            - sensor
+            - input_number
+
+    max_kelvin_entity:
+      name: Maximum Color Temperature Sensor / Input Number (Optional)
+      description: Optional sensor or input_number for maximum Kelvin. Defaults to 5500 if blank.
+      default: ""
+      selector:
+        entity:
+          domain:
+            - sensor
+            - input_number
+
+# =========================================================================
+# TRIGGER VARIABLES
+# Passes blueprint inputs safely into trigger value_templates without schema errors
+# =========================================================================
+trigger_variables:
+  sun_k_sensor: !input sun_kelvin_sensor
+
+mode: queued
+max: 10
+
+# =========================================================================
+# AUTOMATION TRIGGERS
+# Listens to Z2M MQTT device actions and optional sun sensor updates
+# =========================================================================
+trigger:
+  # On Button Short Press
+  - domain: mqtt
+    device_id: !input remote_device_id
+    type: action
+    subtype: on_press_release
+    trigger: device
+    id: on_off
+
+  # Dim Up Button Short Press
+  - domain: mqtt
+    device_id: !input remote_device_id
+    type: action
+    subtype: up_press_release
+    trigger: device
+    id: up
+
+  # Dim Down Button Short Press
+  - domain: mqtt
+    device_id: !input remote_device_id
+    type: action
+    subtype: down_press_release
+    trigger: device
+    id: down
+
+  # Off Button Short Press (Switches mode between Brightness & Kelvin control)
+  - domain: mqtt
+    device_id: !input remote_device_id
+    type: action
+    subtype: off_press_release
+    trigger: device
+    id: switch_mode
+
+  # Off Button Hold Release (Toggles adaptive mode on/off with visual RGB feedback)
+  - domain: mqtt
+    device_id: !input remote_device_id
+    type: action
+    subtype: off_hold_release
+    trigger: device
+    id: hold_action
+
+  # Optional Sun Sensor State Change Trigger
+  - trigger: template
+    id: sun_kelvin
+    value_template: >
+      {{ states(sun_k_sensor) if (sun_k_sensor != '' and sun_k_sensor is not none) else 'none' }}
+
+# =========================================================================
+# AUTOMATION VARIABLES & JINJA EVALUATIONS
+# Evaluates optional inputs, handles missing sensors, and calculates bounded targets
+# =========================================================================
+variables:
+  target_light: !input target_light
+
+  # Safely extract the primary entity_id string from target_light target object
+  light_entity: >
+    {% if target_light.entity_id is defined %}
+      {{ target_light.entity_id if target_light.entity_id is string else target_light.entity_id[0] }}
+    {% else %}
+      none
+    {% endif %}
+
+  # Input entities stored in Jinja variables
+  ada_bool: !input adaptive_mode_boolean
+  ctrl_bool: !input control_mode_boolean
+  sun_k_ent: !input sun_kelvin_sensor
+  sun_b_ent: !input sun_brightness_sensor
+
+  min_b_ent: !input min_brightness_entity
+  max_b_ent: !input max_brightness_entity
+  min_k_ent: !input min_kelvin_entity
+  max_k_ent: !input max_kelvin_entity
+
+  # Validation flags (True if optional helpers/sensors are valid and available)
+  has_adaptive_bool: "{{ ada_bool != '' and ada_bool is not none and ada_bool != 'none' }}"
+  has_control_bool: "{{ ctrl_bool != '' and ctrl_bool is not none and ctrl_bool != 'none' }}"
+  has_sun_k: "{{ sun_k_ent != '' and states(sun_k_ent) not in ['unavailable', 'unknown', 'None'] }}"
+  has_sun_b: "{{ sun_b_ent != '' and states(sun_b_ent) not in ['unavailable', 'unknown', 'None'] }}"
+
+  has_min_b: "{{ min_b_ent != '' and states(min_b_ent) not in ['unavailable', 'unknown', 'None'] }}"
+  has_max_b: "{{ max_b_ent != '' and states(max_b_ent) not in ['unavailable', 'unknown', 'None'] }}"
+  has_min_k: "{{ min_k_ent != '' and states(min_k_ent) not in ['unavailable', 'unknown', 'None'] }}"
+  has_max_k: "{{ max_k_ent != '' and states(max_k_ent) not in ['unavailable', 'unknown', 'None'] }}"
+
+  # Context & Bounds Calculations with Fallbacks
+  is_day: "{{ is_state('sun.sun', 'above_horizon') }}"
+  sun_k: "{{ states(sun_k_ent) | int(2700) if has_sun_k else 2700 }}"
+  sun_b: "{{ states(sun_b_ent) | int(50) if has_sun_b else 50 }}"
+
+  min_b: "{{ states(min_b_ent) | int(20) if has_min_b else 20 }}"
+  max_b: "{{ states(max_b_ent) | int(100) if has_max_b else 100 }}"
+  min_k: "{{ states(min_k_ent) | int(2700) if has_min_k else 2700 }}"
+  max_k: "{{ states(max_k_ent) | int(5500) if has_max_k else 5500 }}"
+
+  # Target brightness & Kelvin bounded securely between min and max limits:
+  # Uses sun sensor values if it is daytime and sun sensor is present; falls back to min limits at night.
+  final_b: "{{ [[sun_b | int, min_b | int]|max, max_b | int]|min if (is_day and has_sun_b) else min_b | int }}"
+  final_k: "{{ [[sun_k | int, min_k | int]|max, max_k | int]|min if (is_day and has_sun_k) else min_k | int }}"
+
+# =========================================================================
+# ACTIONS EXECUTED BASED ON TRIGGER ID
+# =========================================================================
+action:
+  - choose:
+
+      # -------------------------------------------------------------------
+      # ACTION 1: ON / OFF BUTTON PRESS
+      # Toggles lights on/off and resets adaptive and control helper states
+      # -------------------------------------------------------------------
+      - conditions:
+          - condition: trigger
+            id: [on_off]
+        sequence:
+          # Automatically turn off adaptive tracking when manually toggled
+          - if:
+              - condition: template
+                value_template: "{{ has_adaptive_bool }}"
+            then:
+              - action: input_boolean.turn_off
+                target:
+                  entity_id: "{{ ada_bool }}"
+
+          - choose:
+              # If Light is OFF -> Turn ON using calculated daylight/nighttime defaults
+              - conditions:
+                  - condition: template
+                    value_template: "{{ light_entity != 'none' and is_state(light_entity, 'off') }}"
+                sequence:
+                  - action: light.turn_on
+                    target: !input target_light
+                    data:
+                      brightness_pct: "{{ final_b }}"
+                      color_temp_kelvin: "{{ final_k }}"
+                      transition: 1
+
+              # If Light is ON -> Turn OFF and reset mode helper to Brightness mode (ON)
+              - conditions:
+                  - condition: template
+                    value_template: "{{ light_entity != 'none' and is_state(light_entity, 'on') }}"
+                sequence:
+                  - action: light.turn_off
+                    target: !input target_light
+                    data:
+                      transition: 1
+                  - if:
+                      - condition: template
+                        value_template: "{{ has_control_bool }}"
+                    then:
+                      - action: input_boolean.turn_on
+                        target:
+                          entity_id: "{{ ctrl_bool }}"
+
+      # -------------------------------------------------------------------
+      # ACTION 2: UP BUTTON PRESS
+      # Increases Brightness (+10%) or Kelvin (+500K) based on active mode
+      # -------------------------------------------------------------------
+      - conditions:
+          - condition: trigger
+            id: [up]
+          - condition: template
+            value_template: "{{ light_entity != 'none' and is_state(light_entity, 'on') }}"
+        sequence:
+          - variables:
+              curr_b: "{{ (state_attr(light_entity, 'brightness') | int(255) / 255 * 100) | round }}"
+              curr_k: "{{ state_attr(light_entity, 'color_temp_kelvin') | int(min_k) }}"
+              is_br: "{{ is_state(ctrl_bool, 'on') if has_control_bool else true }}"
+          - if:
+              - condition: template
+                value_template: "{{ is_br }}"
+            then:
+              # Brightness Control Mode (is_br = true)
+              - action: light.turn_on
+                target: !input target_light
+                data:
+                  transition: 1
+                  brightness_pct: "{{ [curr_b + 10, max_b | int]|min }}"
+            else:
+              # Kelvin Control Mode (is_br = false)
+              - action: light.turn_on
+                target: !input target_light
+                data:
+                  transition: 1
+                  color_temp_kelvin: "{{ [curr_k + 500, max_k | int]|min }}"
+
+      # -------------------------------------------------------------------
+      # ACTION 3: DOWN BUTTON PRESS
+      # Decreases Brightness (-10%) or Kelvin (-500K) based on active mode
+      # -------------------------------------------------------------------
+      - conditions:
+          - condition: trigger
+            id: [down]
+          - condition: template
+            value_template: "{{ light_entity != 'none' and is_state(light_entity, 'on') }}"
+        sequence:
+          - variables:
+              curr_b: "{{ (state_attr(light_entity, 'brightness') | int(255) / 255 * 100) | round }}"
+              curr_k: "{{ state_attr(light_entity, 'color_temp_kelvin') | int(min_k) }}"
+              is_br: "{{ is_state(ctrl_bool, 'on') if has_control_bool else true }}"
+          - if:
+              - condition: template
+                value_template: "{{ is_br }}"
+            then:
+              # Brightness Control Mode (is_br = true)
+              - action: light.turn_on
+                target: !input target_light
+                data:
+                  transition: 1
+                  brightness_pct: "{{ [curr_b - 10, min_b | int]|max }}"
+            else:
+              # Kelvin Control Mode (is_br = false)
+              - action: light.turn_on
+                target: !input target_light
+                data:
+                  transition: 1
+                  color_temp_kelvin: "{{ [curr_k - 500, min_k | int]|max }}"
+
+      # -------------------------------------------------------------------
+      # ACTION 4: OFF BUTTON SHORT PRESS (SWITCH MODE)
+      # Toggles control helper between Brightness (ON) and Kelvin (OFF) modes
+      # -------------------------------------------------------------------
+      - conditions:
+          - condition: trigger
+            id: [switch_mode]
+          - condition: template
+            value_template: "{{ has_control_bool }}"
+        sequence:
+          - action: input_boolean.toggle
+            target:
+              entity_id: "{{ ctrl_bool }}"
+
+      # -------------------------------------------------------------------
+      # ACTION 5: HOLD OFF BUTTON RELEASE
+      # Toggles adaptive mode, flashes RGB Green (ON) or Red (OFF), then restores light
+      # -------------------------------------------------------------------
+      - conditions:
+          - condition: trigger
+            id: [hold_action]
+          - condition: template
+            value_template: "{{ light_entity != 'none' and is_state(light_entity, 'on') }}"
+          - condition: template
+            value_template: "{{ has_adaptive_bool }}"
+        sequence:
+          # Toggle adaptive mode boolean
+          - action: input_boolean.toggle
+            target:
+              entity_id: "{{ ada_bool }}"
+          - delay:
+              milliseconds: 500
+
+          # Provide visual indicator (Green = Adaptive Enabled, Red = Adaptive Disabled)
+          - if:
+              - condition: template
+                value_template: "{{ is_state(ada_bool, 'on') }}"
+            then:
+              - action: light.turn_on
+                target: !input target_light
+                data:
+                  brightness_pct: 10
+                  transition: 1
+                  rgb_color: [0, 255, 0]
+            else:
+              - action: light.turn_on
+                target: !input target_light
+                data:
+                  brightness_pct: 10
+                  transition: 1
+                  rgb_color: [255, 0, 0]
+          - delay:
+              seconds: 2
+
+          # Restore target brightness and color temperature after visual confirmation
+          - action: light.turn_on
+            target: !input target_light
+            data:
+              brightness_pct: "{{ final_b }}"
+              color_temp_kelvin: "{{ final_k }}"
+              transition: 1
+
+      # -------------------------------------------------------------------
+      # ACTION 6: ADAPTIVE SUN KELVIN TRACKING
+      # Dynamically updates lights when sun sensor state updates (if light is ON & adaptive mode enabled)
+      # -------------------------------------------------------------------
+      - conditions:
+          - condition: trigger
+            id: [sun_kelvin]
+          - condition: template
+            value_template: "{{ light_entity != 'none' and is_state(light_entity, 'on') }}"
+          - condition: template
+            value_template: "{{ has_sun_k }}"
+          - condition: template
+            value_template: "{{ not has_adaptive_bool or is_state(ada_bool, 'on') }}"
+        sequence:
+          - action: light.turn_on
+            target: !input target_light
+            data:
+              brightness_pct: "{{ final_b }}"
+              color_temp_kelvin: "{{ final_k }}"
+              transition: 1
