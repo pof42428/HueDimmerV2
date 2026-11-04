@@ -1,7 +1,7 @@
 blueprint:
   name: "HueDimmerV2"
   description: >
-    Flexible light controller for Philips Hue Dimmer Switch v2.
+    Flexible light controller for Philips Hue Dimmer Switch v2. 
     All helpers, sensors, and min/max limits are optional sensors or input_numbers that fall back to defaults if left blank.
   domain: automation
 
@@ -96,6 +96,26 @@ blueprint:
             - sensor
             - input_number
 
+    transition_on:
+      name: Transition on
+      description: Optional sensor or input_number for transition on
+      default: ""
+      selector:
+        entity:
+          domain:
+            - sensor
+            - input_number
+
+    transition_off:
+      name: Transition off
+      description: Optional sensor or input_number for transition off
+      default: ""
+      selector:
+        entity:
+          domain:
+            - sensor
+            - input_number
+
 # =========================================================================
 # TRIGGER VARIABLES
 # Passes blueprint inputs safely into trigger value_templates without schema errors
@@ -183,6 +203,9 @@ variables:
   min_k_ent: !input min_kelvin_entity
   max_k_ent: !input max_kelvin_entity
 
+  trans_on: !input transition_on
+  trans_off: !input transition_off 
+
   # Validation flags (True if optional helpers/sensors are valid and available)
   has_adaptive_bool: "{{ ada_bool != '' and ada_bool is not none and ada_bool != 'none' }}"
   has_control_bool: "{{ ctrl_bool != '' and ctrl_bool is not none and ctrl_bool != 'none' }}"
@@ -208,6 +231,11 @@ variables:
   # Uses sun sensor values if it is daytime and sun sensor is present; falls back to min limits at night.
   final_b: "{{ [[sun_b | int, min_b | int]|max, max_b | int]|min if (is_day and has_sun_b) else min_b | int }}"
   final_k: "{{ [[sun_k | int, min_k | int]|max, max_k | int]|min if (is_day and has_sun_k) else min_k | int }}"
+
+  has_on: "{{ trans_on != '' and states(trans_on) not in ['unavailable', 'unknown', 'None'] }}"
+  has_off: "{{ trans_off != '' and states(trans_off) not in ['unavailable', 'unknown', 'None'] }}"
+  t_on: "{{ states(trans_on) | int(1) if has_on else 1 }}"
+  t_off: "{{ states(trans_off) | int(1) if has_off else 1 }}"
 
 # =========================================================================
 # ACTIONS EXECUTED BASED ON TRIGGER ID
@@ -243,7 +271,7 @@ action:
                     data:
                       brightness_pct: "{{ final_b }}"
                       color_temp_kelvin: "{{ final_k }}"
-                      transition: 1
+                      transition: "{{ t_on }}"
 
               # If Light is ON -> Turn OFF and reset mode helper to Brightness mode (ON)
               - conditions:
@@ -253,7 +281,7 @@ action:
                   - action: light.turn_off
                     target: !input target_light
                     data:
-                      transition: 1
+                      transition: "{{ t_off }}"
                   - if:
                       - condition: template
                         value_template: "{{ has_control_bool }}"
@@ -284,15 +312,18 @@ action:
               - action: light.turn_on
                 target: !input target_light
                 data:
-                  transition: 1
+                  transition: "{{ t_on }}"
                   brightness_pct: "{{ [curr_b + 10, max_b | int]|min }}"
             else:
               # Kelvin Control Mode (is_br = false)
               - action: light.turn_on
                 target: !input target_light
                 data:
-                  transition: 1
+                  transition: "{{ t_on }}"
                   color_temp_kelvin: "{{ [curr_k + 500, max_k | int]|min }}"
+          - action: input_boolean.turn_off
+            target:
+                entity_id: '{{ ada_bool }}'
 
       # -------------------------------------------------------------------
       # ACTION 3: DOWN BUTTON PRESS
@@ -316,15 +347,18 @@ action:
               - action: light.turn_on
                 target: !input target_light
                 data:
-                  transition: 1
+                  transition: "{{ t_on }}"
                   brightness_pct: "{{ [curr_b - 10, min_b | int]|max }}"
             else:
               # Kelvin Control Mode (is_br = false)
               - action: light.turn_on
                 target: !input target_light
                 data:
-                  transition: 1
+                  transition: "{{ t_on }}"
                   color_temp_kelvin: "{{ [curr_k - 500, min_k | int]|max }}"
+          - action: input_boolean.turn_off
+            target:
+                entity_id: '{{ ada_bool }}'
 
       # -------------------------------------------------------------------
       # ACTION 4: OFF BUTTON SHORT PRESS (SWITCH MODE)
