@@ -172,10 +172,9 @@ trigger:
     id: hold_action
 
   # Optional Sun Sensor State Change Trigger
-  - trigger: template
+  - platform: state
     id: sun_kelvin
-    value_template: >
-      {{ states(sun_k_sensor) if (sun_k_sensor != '' and sun_k_sensor is not none) else 'none' }}
+    entity_id: !input sun_kelvin_sensor
 
 # =========================================================================
 # AUTOMATION VARIABLES & JINJA EVALUATIONS
@@ -256,7 +255,7 @@ action:
               - condition: template
                 value_template: "{{ has_adaptive_bool }}"
             then:
-              - action: input_boolean.turn_off
+              - action: input_boolean.turn_on
                 target:
                   entity_id: "{{ ada_bool }}"
 
@@ -321,9 +320,13 @@ action:
                 data:
                   transition: "{{ t_on }}"
                   color_temp_kelvin: "{{ [curr_k + 500, max_k | int]|min }}"
-          - action: input_boolean.turn_off
-            target:
-                entity_id: '{{ ada_bool }}'
+          - if:
+              - condition: template
+                value_template: "{{ has_adaptive_bool }}"
+            then:
+              - action: input_boolean.turn_off
+                target:
+                  entity_id: "{{ ada_bool }}"
 
       # -------------------------------------------------------------------
       # ACTION 3: DOWN BUTTON PRESS
@@ -356,9 +359,13 @@ action:
                 data:
                   transition: "{{ t_on }}"
                   color_temp_kelvin: "{{ [curr_k - 500, min_k | int]|max }}"
-          - action: input_boolean.turn_off
-            target:
-                entity_id: '{{ ada_bool }}'
+          - if:
+              - condition: template
+                value_template: "{{ has_adaptive_bool }}"
+            then:
+              - action: input_boolean.turn_off
+                target:
+                  entity_id: "{{ ada_bool }}"
 
       # -------------------------------------------------------------------
       # ACTION 4: OFF BUTTON SHORT PRESS (SWITCH MODE)
