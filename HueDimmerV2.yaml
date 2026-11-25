@@ -123,8 +123,7 @@ blueprint:
 trigger_variables:
   sun_k_sensor: !input sun_kelvin_sensor
 
-mode: queued
-max: 10
+mode: restart
 
 # =========================================================================
 # AUTOMATION TRIGGERS
@@ -251,13 +250,6 @@ action:
             id: [on_off]
         sequence:
           # Automatically turn off adaptive tracking when manually toggled
-          - if:
-              - condition: template
-                value_template: "{{ has_adaptive_bool }}"
-            then:
-              - action: input_boolean.turn_on
-                target:
-                  entity_id: "{{ ada_bool }}"
 
           - choose:
               # If Light is OFF -> Turn ON using calculated daylight/nighttime defaults
@@ -271,6 +263,20 @@ action:
                       brightness_pct: "{{ final_b }}"
                       color_temp_kelvin: "{{ final_k }}"
                       transition: "{{ t_on }}"
+                  - if:
+                     - condition: template
+                       value_template: "{{ has_adaptive_bool }}"
+                    then:
+                      - action: input_boolean.turn_on
+                        target:
+                          entity_id: "{{ ada_bool }}"
+                  - if:
+                    - condition: template
+                      value_template: "{{ has_control_bool }}"
+                    then:
+                      - action: input_boolean.turn_on
+                        target:
+                          entity_id: "{{ ctrl_bool }}"
 
               # If Light is ON -> Turn OFF and reset mode helper to Brightness mode (ON)
               - conditions:
@@ -288,6 +294,13 @@ action:
                       - action: input_boolean.turn_on
                         target:
                           entity_id: "{{ ctrl_bool }}"
+                  - if:
+                      - condition: template
+                        value_template: "{{ has_adaptive_bool }}"
+                    then:
+                      - action: input_boolean.turn_off
+                        target:
+                          entity_id: "{{ ada_bool }}"
 
       # -------------------------------------------------------------------
       # ACTION 2: UP BUTTON PRESS
